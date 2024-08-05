@@ -1,0 +1,63 @@
+diff --git a/meson.build b/meson.build
+index a99d1a48..879b637d 100644
+--- a/meson.build
++++ b/meson.build
+@@ -12,10 +12,16 @@ is_debug_build = get_option('buildtype').startswith('debug')
+ 
+ cc = meson.get_compiler('c')
+ 
+-if cc.has_function('memfd_create')
++if cc.has_function('memfd_create',
++                   args: ['-D_GNU_SOURCE'], prefix: '#include <sys/mman.h>')
+   add_project_arguments('-DMEMFD_CREATE', language: 'c')
+ endif
+ 
++if cc.has_function('secure_getenv',
++                   args: ['-D_GNU_SOURCE'], prefix: '#include <stdlib.h>')
++  add_project_arguments('-DHAVE_SECURE_GETENV=1', language: 'c')
++endif
++
+ # Missing on DragonFly, FreeBSD < 14.1
+ if cc.has_function('execvpe')
+   add_project_arguments('-DEXECVPE', language: 'c')
+diff --git a/shm.c b/shm.c
+index 04cec211..975fa903 100644
+--- a/shm.c
++++ b/shm.c
+@@ -1,6 +1,7 @@
+ #include "shm.h"
+ 
+ #include <stdio.h>
++#include <stdlib.h>
+ #include <string.h>
+ #include <errno.h>
+ #include <unistd.h>
+@@ -359,9 +360,27 @@ get_new_buffers(struct buffer_chain *chain, size_t count,
+     // memfd_create on FreeBSD 13 is SHM_ANON without sealing support
+     pool_fd = shm_open(SHM_ANON, O_RDWR | O_CLOEXEC, 0600);
+ #else
+-    char name[] = "/tmp/foot-wayland-shm-buffer-pool-XXXXXX";
++    const char *const tmpname = "foot-wayland-shm-buffer-pool-XXXXXX";
++#if HAVE_SECURE_GETENV
++    const char *const tmpdir_env = secure_getenv("TMPDIR");
++#else
++    const char *const tmpdir_env = getenv("TMPDIR");
++#endif
++    const char *const tmpdir = tmpdir_env ? tmpdir_env : "/tmp";
++    const size_t namelen = strlen(tmpdir) + strlen(tmpname) + 2;
++    char *const name = malloc(namelen);
++    if (!name) {
++        LOG_ERRNO("failed to malloc the path of SHM backing memory file");
++        goto err;
++    }
++    if (snprintf(name, namelen, "%s/%s", tmpdir, tmpname) != namelen - 1) {
++        free(name);
++        LOG_ERRNO("failed to create the name of SHM backing memory file");
++        goto err;
++    }
+     pool_fd = mkostemp(name, O_CLOEXEC);
+     unlink(name);
++    free(name);
+ #endif
+     if (pool_fd == -1) {
+         LOG_ERRNO("failed to create SHM backing memory file");
