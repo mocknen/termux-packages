@@ -1,0 +1,13 @@
+diff --git a/fcft.c b/fcft.c
+index 09728ab..dfa1158 100644
+--- a/fcft.c
++++ b/fcft.c
+@@ -507,7 +507,7 @@ base_pattern_from_name(const char *name, FcFontSet **set)
+ {
+     /* Fontconfig fails to parse floating point values unless locale
+      * is e.g C, or en_US.UTF-8 */
+-    assert(strcmp(setlocale(LC_NUMERIC, NULL), "C") == 0);
++    assert(strcmp(setlocale(LC_NUMERIC, "C"), "C") == 0);
+     FcPattern *pattern = FcNameParse((const unsigned char *)name);
+ 
+     if (pattern == NULL) {
